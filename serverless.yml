@@ -1,5 +1,5 @@
 org: evssz
-service: api-web-scraping
+service: api-web-scraping-2
 
 provider:
   name: aws
@@ -28,11 +28,11 @@ resources:
     TablaWebScrapping:
       Type: AWS::DynamoDB::Table
       Properties:
-        TableName: TablaWebScrapping
+        TableName: TablaWebScrapping_2
         AttributeDefinitions:
           - AttributeName: id
             AttributeType: S
         KeySchema:
           - AttributeName: id
             KeyType: HASH
-        BillingMode: PAY_PER_REQUEST
+        BillingMode: PAY_PER_REQUESTa

@@ -2,7 +2,7 @@ from playwright.sync_api import sync_playwright
 import boto3, uuid
 
 URL = "https://ultimosismo.igp.gob.pe/ultimo-sismo/sismos-reportados"
-TABLE = "TablaWebScrapping"
+TABLE = "TablaWebScrapping_2"
 
 def scrape_with_playwright():
     with sync_playwright() as p:
