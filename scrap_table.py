@@ -4,7 +4,8 @@ import boto3
 import requests
 
 def lambda_handler(event, context):
-    url = "https://ultimosismo.igp.gob.pe/ultimo-sismo/ajaxb/2025"
+    # OJO: aquí sí va /api/
+    url = "https://ultimosismo.igp.gob.pe/api/ultimo-sismo/ajaxb/2025"
 
     headers = {
         "User-Agent": (
@@ -12,14 +13,11 @@ def lambda_handler(event, context):
             "AppleWebKit/537.36 (KHTML, like Gecko) "
             "Chrome/130.0 Safari/537.36"
         ),
-        "Accept": "application/json, text/javascript, */*; q=0.01",
-        "X-Requested-With": "XMLHttpRequest",
-        "Referer": "https://ultimosismo.igp.gob.pe/ultimo-sismo/sismos-reportados",
+        "Accept": "application/json, text/plain, */*",  # típico en llamadas API
     }
 
     response = requests.get(url, headers=headers, timeout=10)
 
-    # Para revisar problemas:
     print("STATUS:", response.status_code)
     print("CONTENT-TYPE:", response.headers.get("Content-Type"))
     print("BODY PREVIEW:", response.text[:200])
@@ -33,9 +31,9 @@ def lambda_handler(event, context):
             })
         }
 
-    # AQUÍ: la API devuelve una LISTA directamente
+    # La API devuelve directamente una LISTA: [ { ... }, { ... }, ... ]
     try:
-        sismos = response.json()      # sismos es una lista de dicts
+        sismos = response.json()
     except ValueError as e:
         return {
             "statusCode": 500,
@@ -47,19 +45,18 @@ def lambda_handler(event, context):
         }
 
     if not isinstance(sismos, list):
-        # por si acaso algún día cambian el formato
         sismos = [sismos]
 
     dynamodb = boto3.resource("dynamodb")
     table = dynamodb.Table("TablaWebScrapping")
 
-    # 1) borrar todos los items anteriores
+    # borrar items antiguos
     scan = table.scan()
     with table.batch_writer() as batch:
         for item in scan.get("Items", []):
             batch.delete_item(Key={"id": item["id"]})
 
-    # 2) insertar los nuevos
+    # insertar nuevos
     items_guardados = []
     with table.batch_writer() as batch:
         for i, s in enumerate(sismos, start=1):
