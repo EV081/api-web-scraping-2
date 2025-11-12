@@ -32,16 +32,10 @@ async def scrape_async():
 def lambda_handler(event, context):
     rows = asyncio.run(scrape_async())
     ddb = boto3.resource("dynamodb").Table(TABLE)
-
     scan = ddb.scan()
     with ddb.batch_writer() as batch:
         for it in scan.get("Items", []):
             batch.delete_item(Key={"id": it["id"]})
         for it in rows:
             batch.put_item(Item=it)
-
-    return {
-        "statusCode": 200,
-        "headers": {"Content-Type": "application/json"},
-        "body": json.dumps(rows, ensure_ascii=False),
-    }
+    return {"statusCode": 200, "headers": {"Content-Type": "application/json"}, "body": json.dumps(rows, ensure_ascii=False)}
