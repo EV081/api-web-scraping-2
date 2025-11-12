@@ -1,41 +1,45 @@
-import os, json, uuid, boto3, asyncio
-from playwright.async_api import async_playwright
-
-URL = "https://ultimosismo.igp.gob.pe/ultimo-sismo/sismos-reportados"
-TABLE = os.getenv("DDB_TABLE", "TablaWebScrapping_2")
-
-async def scrape_async():
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=True,
-            args=[
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-                "--single-process",
-            ],
-        )
-        page = await browser.new_page()
-        await page.goto(URL, wait_until="networkidle")
-        await page.wait_for_selector("table")
-        headers = [await th.inner_text() for th in await page.locator("table thead th").all()]
-        rows = []
-        for r in await page.locator("table tbody tr").all():
-            cells = [await td.inner_text() for td in await r.locator("td").all()]
-            row = {headers[i]: cells[i] for i in range(min(len(headers), len(cells)))}
-            row["id"] = str(uuid.uuid4())
-            rows.append(row)
-        await browser.close()
-        return rows
+import requests
+import boto3
+import uuid
+import json
 
 def lambda_handler(event, context):
-    rows = asyncio.run(scrape_async())
-    ddb = boto3.resource("dynamodb").Table(TABLE)
-    scan = ddb.scan()
-    with ddb.batch_writer() as batch:
-        for it in scan.get("Items", []):
-            batch.delete_item(Key={"id": it["id"]})
-        for it in rows:
-            batch.put_item(Item=it)
-    return {"statusCode": 200, "headers": {"Content-Type": "application/json"}, "body": json.dumps(rows, ensure_ascii=False)}
+    url = "https://ultimosismo.igp.gob.pe/ultimo-sismo/ajaxb/2025"
+    response = requests.get(url)
+    if response.status_code != 200:
+        return {
+            'statusCode': response.status_code,
+            'body': json.dumps({'error': 'Error al acceder a la API'})
+        }
+
+    payload = response.json()      # {'data': [ ... ]}
+    sismos = payload.get('data', [])
+
+    dynamodb = boto3.resource('dynamodb')
+    table = dynamodb.Table('TablaWebScrapping_2')
+
+    # borrar registros antiguos
+    scan = table.scan()
+    with table.batch_writer() as batch:
+        for each in scan.get('Items', []):
+            batch.delete_item(Key={'id': each['id']})
+
+    # insertar nuevos
+    rows = []
+    for i, s in enumerate(sismos, start=1):
+        item = {
+            'id': str(uuid.uuid4()),
+            '#': i,
+            'fecha_local': s.get('fecha_local'),
+            'hora_local': s.get('hora_local'),
+            'magnitud': s.get('magnitud'),
+            'referencia': s.get('referencia'),
+            # añade los campos que quieras más...
+        }
+        rows.append(item)
+        table.put_item(Item=item)
+
+    return {
+        'statusCode': 200,
+        'body': json.dumps(rows, default=str)
+    }
