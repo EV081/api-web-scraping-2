@@ -6,7 +6,16 @@ TABLE = os.getenv("DDB_TABLE", "TablaWebScrapping_2")
 
 async def scrape_async():
     async with async_playwright() as p:
-        browser = await p.chromium.launch()
+        browser = await p.chromium.launch(
+            headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--single-process",
+            ],
+        )
         page = await browser.new_page()
         await page.goto(URL, wait_until="networkidle")
         await page.wait_for_selector("table")
@@ -23,10 +32,16 @@ async def scrape_async():
 def lambda_handler(event, context):
     rows = asyncio.run(scrape_async())
     ddb = boto3.resource("dynamodb").Table(TABLE)
+
     scan = ddb.scan()
     with ddb.batch_writer() as batch:
         for it in scan.get("Items", []):
             batch.delete_item(Key={"id": it["id"]})
         for it in rows:
             batch.put_item(Item=it)
-    return {"statusCode": 200, "headers": {"Content-Type": "application/json"}, "body": json.dumps(rows, ensure_ascii=False)}
+
+    return {
+        "statusCode": 200,
+        "headers": {"Content-Type": "application/json"},
+        "body": json.dumps(rows, ensure_ascii=False),
+    }

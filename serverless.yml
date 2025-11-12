@@ -3,25 +3,57 @@ service: api-web-scraping-2
 
 provider:
   name: aws
+  region: us-east-1
   runtime: python3.12
-  # Default memory size for functions (default: 1024MB)
-  memorySize: 1024
-  timeout: 20
+  architecture: x86_64
+  memorySize: 2048
+  timeout: 60
   iam:
     role: arn:aws:iam::468251834706:role/LabRole
 
+plugins:
+  - serverless-python-requirements
+
+custom:
+  pythonRequirements:
+    dockerizePip: true
+    slim: true
+    zip: true
+
+package:
+  patterns:
+    - 'scrap_table.py'
+    - '!venv/**'
+    - '!node_modules/**'
+    - '!**/*.pyc'
+    - '!__pycache__/**'
+
+layers:
+  playwrightLayer:
+    package:
+      artifact: .layers/playwright-layer.zip
+    name: ${self:service}-playwright
+    description: Playwright + Chromium for Python 3.12 (x86_64)
+    compatibleRuntimes:
+      - python3.12
+    compatibleArchitectures:
+      - x86_64
+
 functions:
   scrape_table:
-    handler: scrap_table.lambda_handler  # Asegúrarse de que el nombre del archivo y la función coincidan
-    package:
-      include:
-        - ./**  # Incluir todo el contenido del directorio
+    handler: scrap_table.lambda_handler
+    layers:
+      - { Ref: PlaywrightLayerLambdaLayer }  # referencia a la layer definida arriba
+    environment:
+      DDB_TABLE: TablaWebScrapping_2
+      PLAYWRIGHT_BROWSERS_PATH: /opt/playwright/ms-playwright
+    ephemeralStorageSize: 10240
+    memorySize: 2048
+    timeout: 60
     events:
-      - http:
+      - httpApi:
+          method: GET
           path: /scrape/table
-          method: get
-          cors: true
-          integration: lambda
 
 resources:
   Resources:
