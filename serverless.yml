@@ -11,9 +11,6 @@ provider:
   iam:
     role: arn:aws:iam::468251834706:role/LabRole
 
-plugins:
-  - serverless-python-requirements
-
 custom:
   pythonRequirements:
     dockerizePip: true
@@ -43,7 +40,7 @@ functions:
   scrape_table:
     handler: scrap_table.lambda_handler
     layers:
-      - { Ref: PlaywrightLayerLambdaLayer }  # referencia a la layer definida arriba
+      - { Ref: PlaywrightLayerLambdaLayer }
     environment:
       DDB_TABLE: TablaWebScrapping_2
       PLAYWRIGHT_BROWSERS_PATH: /opt/playwright/ms-playwright
@@ -54,17 +51,3 @@ functions:
       - httpApi:
           method: GET
           path: /scrape/table
-
-resources:
-  Resources:
-    TablaWebScrapping:
-      Type: AWS::DynamoDB::Table
-      Properties:
-        TableName: TablaWebScrapping_2
-        AttributeDefinitions:
-          - AttributeName: id
-            AttributeType: S
-        KeySchema:
-          - AttributeName: id
-            KeyType: HASH
-        BillingMode: PAY_PER_REQUEST
