@@ -1,37 +1,34 @@
-import os, json, uuid, boto3, asyncio
-from playwright.async_api import async_playwright
+from playwright.sync_api import sync_playwright
+import boto3, uuid
 
 URL = "https://ultimosismo.igp.gob.pe/ultimo-sismo/sismos-reportados"
 TABLE = "TablaWebScrapping_2"
-async def scrape_async():
-    async with async_playwright() as p:
-        browser = await p.chromium.launch()
-        page = await browser.new_page()
-        await page.goto(URL, wait_until="networkidle")
-        await page.wait_for_selector("table")
-        headers = [await th.inner_text() for th in await page.locator("table thead th").all()]
+
+def scrape_with_playwright():
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(URL, wait_until="networkidle")
+        page.wait_for_selector("table")
+        headers = [th.inner_text().strip() for th in page.locator("table thead th").all()]
         rows = []
-        for r in await page.locator("table tbody tr").all():
-            cells = [await td.inner_text() for td in await r.locator("td").all()]
+        for r in page.locator("table tbody tr").all():
+            cells = [td.inner_text().strip() for td in r.locator("td").all()]
+            # A veces la primera columna es '#'; ajusta mapeo si es necesario
             row = {headers[i]: cells[i] for i in range(min(len(headers), len(cells)))}
             row["id"] = str(uuid.uuid4())
             rows.append(row)
-        await browser.close()
+        browser.close()
         return rows
 
 def lambda_handler(event, context):
-    rows = asyncio.run(scrape_async())
-    ddb_table = boto3.resource("dynamodb").Table(TABLE)
-
-    scan = ddb_table.scan()
-    with ddb_table.batch_writer() as batch:
+    rows = scrape_with_playwright()
+    ddb = boto3.resource("dynamodb").Table(TABLE)
+    # (Opcional) borrar y reinsertar como en tu ejemplo
+    scan = ddb.scan()
+    with ddb.batch_writer() as batch:
         for it in scan.get("Items", []):
             batch.delete_item(Key={"id": it["id"]})
         for it in rows:
             batch.put_item(Item=it)
-
-    return {
-        "statusCode": 200,
-        "headers": {"Content-Type": "application/json; charset=utf-8"},
-        "body": json.dumps(rows, ensure_ascii=False)
-    }
+    return {"statusCode": 200, "body": rows}
