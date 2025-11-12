@@ -4,7 +4,6 @@ import boto3
 import requests
 
 def lambda_handler(event, context):
-    # OJO: aquí sí va /api/
     url = "https://ultimosismo.igp.gob.pe/api/ultimo-sismo/ajaxb/2025"
 
     headers = {
@@ -13,7 +12,7 @@ def lambda_handler(event, context):
             "AppleWebKit/537.36 (KHTML, like Gecko) "
             "Chrome/130.0 Safari/537.36"
         ),
-        "Accept": "application/json, text/plain, */*",  # típico en llamadas API
+        "Accept": "application/json, text/plain, */*",
     }
 
     response = requests.get(url, headers=headers, timeout=10)
@@ -76,7 +75,8 @@ def lambda_handler(event, context):
             }
             items_guardados.append(item)
             batch.put_item(Item=item)
-
+            
+    print(json.dumps(items_guardados, indent=2, ensure_ascii=False))
     return {
         "statusCode": 200,
         "body": json.dumps(items_guardados, default=str)
