@@ -2,7 +2,7 @@ import os, json, uuid, boto3, asyncio
 from playwright.async_api import async_playwright
 
 URL = "https://ultimosismo.igp.gob.pe/ultimo-sismo/sismos-reportados"
-TABLE = "TablaWebScrapping_2"
+TABLE = os.getenv("DDB_TABLE", "TablaWebScrapping_2")
 
 async def scrape_async():
     async with async_playwright() as p:
@@ -22,17 +22,11 @@ async def scrape_async():
 
 def lambda_handler(event, context):
     rows = asyncio.run(scrape_async())
-    ddb_table = boto3.resource("dynamodb").Table(TABLE)
-
-    scan = ddb_table.scan()
-    with ddb_table.batch_writer() as batch:
+    ddb = boto3.resource("dynamodb").Table(TABLE)
+    scan = ddb.scan()
+    with ddb.batch_writer() as batch:
         for it in scan.get("Items", []):
             batch.delete_item(Key={"id": it["id"]})
         for it in rows:
             batch.put_item(Item=it)
-
-    return {
-        "statusCode": 200,
-        "headers": {"Content-Type": "application/json; charset=utf-8"},
-        "body": json.dumps(rows, ensure_ascii=False)
-    }
+    return {"statusCode": 200, "headers": {"Content-Type": "application/json"}, "body": json.dumps(rows, ensure_ascii=False)}
