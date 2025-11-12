@@ -35,4 +35,5 @@ resources:
         KeySchema:
           - AttributeName: id
             KeyType: HASH
-        BillingMode: PAY_PER_REQUESTa
+        BillingMode: PAY_PER_REQUEST
+
