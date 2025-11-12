@@ -15,13 +15,14 @@ docker run --rm \
   -lc "
 set -e
 python -m pip install --upgrade pip
-# 1) Instala playwright (incluye greenlet compilado) en site-packages de la layer
+# 1) Instala playwright en la layer (site-packages)
 pip install --no-cache-dir --target /opt/layer/python/lib/python${PYVER}/site-packages playwright==1.48.0
-# 2) Instala Chromium de Playwright y copia la cache a la layer
+# 2) Asegura que Python vea ese site-packages
+export PYTHONPATH=/opt/layer/python/lib/python${PYVER}/site-packages:\$PYTHONPATH
+# 3) Instala Chromium de Playwright en la carpeta de la layer
+export PLAYWRIGHT_BROWSERS_PATH=/opt/layer/playwright/ms-playwright
 python -m playwright install chromium
-mkdir -p /opt/layer/playwright
-cp -r /root/.cache/ms-playwright /opt/layer/playwright/
-# 3) Limpieza opcional para reducir tamaño
+# 4) Limpieza opcional
 find /opt/layer/python/lib/python${PYVER}/site-packages -name 'tests' -type d -prune -exec rm -rf {} +
 "
 
@@ -30,7 +31,6 @@ pushd "$LAYER_ROOT" >/dev/null
 zip -r ../playwright-layer.zip .
 popd >/dev/null
 
-echo ">> Comprobando contenido del ZIP:"
-unzip -l .layers/playwright-layer.zip | sed -n '1,80p'
-
+echo ">> Verificando contenido del ZIP:"
+unzip -l .layers/playwright-layer.zip | sed -n '1,120p'
 echo ">> Listo: .layers/playwright-layer.zip"
