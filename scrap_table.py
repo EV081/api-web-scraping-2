@@ -30,7 +30,6 @@ def lambda_handler(event, context):
             })
         }
 
-    # La API devuelve directamente una LISTA: [ { ... }, { ... }, ... ]
     try:
         sismos = response.json()
     except ValueError as e:
@@ -47,15 +46,13 @@ def lambda_handler(event, context):
         sismos = [sismos]
 
     dynamodb = boto3.resource("dynamodb")
-    table = dynamodb.Table("TablaWebScrapping")
+    table = dynamodb.Table("TablaWebScrapping_2")
 
-    # borrar items antiguos
     scan = table.scan()
     with table.batch_writer() as batch:
         for item in scan.get("Items", []):
             batch.delete_item(Key={"id": item["id"]})
 
-    # insertar nuevos
     items_guardados = []
     with table.batch_writer() as batch:
         for i, s in enumerate(sismos, start=1):
@@ -75,7 +72,7 @@ def lambda_handler(event, context):
             }
             items_guardados.append(item)
             batch.put_item(Item=item)
-            
+
     print(json.dumps(items_guardados, indent=2, ensure_ascii=False))
     return {
         "statusCode": 200,
