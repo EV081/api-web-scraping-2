@@ -1,80 +1,73 @@
-import json
-import uuid
-import boto3
 import requests
+from bs4 import BeautifulSoup
+import boto3
+import uuid
 
 def lambda_handler(event, context):
-    url = "https://ultimosismo.igp.gob.pe/api/ultimo-sismo/ajaxb/2025"
+    # URL de la página web que contiene la tabla
+    url = "https://ultimosismo.igp.gob.pe/ultimo-sismo/sismos-reportados"
 
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (X11; Linux x86_64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/130.0 Safari/537.36"
-        ),
-        "Accept": "application/json, text/plain, */*",
-    }
-
-    response = requests.get(url, headers=headers, timeout=10)
-
-    print("STATUS:", response.status_code)
-    print("CONTENT-TYPE:", response.headers.get("Content-Type"))
-    print("BODY PREVIEW:", response.text[:200])
-
+    # Realizar la solicitud HTTP a la página web
+    response = requests.get(url)
     if response.status_code != 200:
         return {
-            "statusCode": response.status_code,
-            "body": json.dumps({
-                "error": "Error al acceder a la API",
-                "preview": response.text[:200]
-            })
+            'statusCode': response.status_code,
+            'body': 'Error al acceder a la página web'
         }
 
-    try:
-        sismos = response.json()
-    except ValueError as e:
+    # Parsear el contenido HTML de la página web
+    soup = BeautifulSoup(response.content, 'html.parser')
+
+    # Encontrar la tabla en el HTML
+    table = soup.find('table')
+    if not table:
         return {
-            "statusCode": 500,
-            "body": json.dumps({
-                "error": "La respuesta no es JSON válido",
-                "detalle": str(e),
-                "preview": response.text[:200]
-            })
+            'statusCode': 404,
+            'body': 'No se encontró la tabla en la página web'
         }
 
-    if not isinstance(sismos, list):
-        sismos = [sismos]
+    # Extraer los encabezados de la tabla (Ahora con div y span)
+    headers = [header.find('span').text.strip() for header in table.find_all('th')]
 
-    dynamodb = boto3.resource("dynamodb")
-    table = dynamodb.Table("TablaWebScrapping_2")
+    # Extraer las filas de la tabla
+    rows = []
+    for row in table.find_all('tr')[1:]:  # Omitir el encabezado
+        cells = row.find_all('td')
+        # Asegúrate de que el número de celdas es igual al número de encabezados
+        if len(cells) == len(headers):
+            row_data = {}
+            for i, cell in enumerate(cells):
+                span = cell.find('span')
+                if span:
+                    row_data[headers[i]] = span.text.strip()  # Extraer el texto del span
+                else:
+                    row_data[headers[i]] = cell.text.strip()  # Si no tiene span, se extrae el texto normal
+            rows.append(row_data)
 
+    # Guardar los datos en DynamoDB
+    dynamodb = boto3.resource('dynamodb')
+    table = dynamodb.Table('TablaWebScrapping_2')
+
+    # Eliminar todos los elementos de la tabla antes de agregar los nuevos
     scan = table.scan()
     with table.batch_writer() as batch:
-        for item in scan.get("Items", []):
-            batch.delete_item(Key={"id": item["id"]})
+        for each in scan['Items']:
+            batch.delete_item(
+                Key={
+                    'id': each['id']
+                }
+            )
 
-    items_guardados = []
-    with table.batch_writer() as batch:
-        for i, s in enumerate(sismos, start=1):
-            item = {
-                "id": str(uuid.uuid4()),
-                "#": i,
-                "codigo": s.get("codigo"),
-                "fecha_local": s.get("fecha_local"),
-                "hora_local": s.get("hora_local"),
-                "latitud": s.get("latitud"),
-                "longitud": s.get("longitud"),
-                "magnitud": s.get("magnitud"),
-                "profundidad": s.get("profundidad"),
-                "referencia": s.get("referencia"),
-                "intensidad": s.get("intensidad"),
-                "reporte_acelerometrico_pdf": s.get("reporte_acelerometrico_pdf"),
-            }
-            items_guardados.append(item)
-            batch.put_item(Item=item)
+    # Insertar los nuevos datos
+    i = 1
+    for row in rows:
+        row['#'] = i
+        row['id'] = str(uuid.uuid4())  # Generar un ID único para cada entrada
+        table.put_item(Item=row)
+        i = i + 1
 
-    print(json.dumps(items_guardados, indent=2, ensure_ascii=False))
+    # Retornar el resultado como JSON
     return {
-        "statusCode": 200,
-        "body": json.dumps(items_guardados, default=str)
+        'statusCode': 200,
+        'body': rows
     }
