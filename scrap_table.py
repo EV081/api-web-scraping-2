@@ -1,73 +1,55 @@
-import requests
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
-import boto3
-import uuid
+import time
 
-def lambda_handler(event, context):
-    # URL de la página web que contiene la tabla
-    url = "https://ultimosismo.igp.gob.pe/ultimo-sismo/sismos-reportados"
+# Configuración del driver de Selenium (usando ChromeDriver)
+chrome_driver_path = '/ruta/al/chromedriver'  # Cambia esta ruta al directorio donde está el chromedriver
 
-    # Realizar la solicitud HTTP a la página web
-    response = requests.get(url)
-    if response.status_code != 200:
-        return {
-            'statusCode': response.status_code,
-            'body': 'Error al acceder a la página web'
-        }
+# Configuración de las opciones para no abrir la ventana del navegador (opcional)
+chrome_options = Options()
+chrome_options.add_argument("--headless")  # Corre el navegador en segundo plano sin abrir una ventana
 
-    # Parsear el contenido HTML de la página web
-    soup = BeautifulSoup(response.content, 'html.parser')
+# Inicializa el driver de Selenium con las opciones configuradas
+service = Service(chrome_driver_path)
+driver = webdriver.Chrome(service=service, options=chrome_options)
 
-    # Encontrar la tabla en el HTML
-    table = soup.find('table')
-    if not table:
-        return {
-            'statusCode': 404,
-            'body': 'No se encontró la tabla en la página web'
-        }
+# URL de la página web
+url = "https://ultimosismo.igp.gob.pe/ultimo-sismo/sismos-reportados"
 
-    # Extraer los encabezados de la tabla (Ahora con div y span)
-    headers = [header.find('span').text.strip() for header in table.find_all('th')]
+# Accede a la página web
+driver.get(url)
 
+# Espera a que la página cargue completamente (ajusta el tiempo según sea necesario)
+time.sleep(5)  # Espera 5 segundos (esto puede ajustarse dependiendo de la velocidad de carga)
+
+# Obtén el HTML de la página cargada
+html = driver.page_source
+
+# Usar BeautifulSoup para parsear el HTML
+soup = BeautifulSoup(html, 'html.parser')
+
+# Encontrar la tabla
+table = soup.find('table')
+if table:
+    print("Tabla encontrada. Extrayendo los datos...")
+    
+    # Extraer los encabezados de la tabla (si existen)
+    headers = [header.text.strip() for header in table.find_all('th')]
+    print("Encabezados:", headers)
+    
     # Extraer las filas de la tabla
     rows = []
     for row in table.find_all('tr')[1:]:  # Omitir el encabezado
         cells = row.find_all('td')
-        # Asegúrate de que el número de celdas es igual al número de encabezados
-        if len(cells) == len(headers):
-            row_data = {}
-            for i, cell in enumerate(cells):
-                span = cell.find('span')
-                if span:
-                    row_data[headers[i]] = span.text.strip()  # Extraer el texto del span
-                else:
-                    row_data[headers[i]] = cell.text.strip()  # Si no tiene span, se extrae el texto normal
-            rows.append(row_data)
+        row_data = {headers[i]: cell.text.strip() for i, cell in enumerate(cells)}
+        rows.append(row_data)
+    
+    print("Datos extraídos:", rows)
+else:
+    print("No se encontró la tabla en la página.")
 
-    # Guardar los datos en DynamoDB
-    dynamodb = boto3.resource('dynamodb')
-    table = dynamodb.Table('TablaWebScrapping_2')
-
-    # Eliminar todos los elementos de la tabla antes de agregar los nuevos
-    scan = table.scan()
-    with table.batch_writer() as batch:
-        for each in scan['Items']:
-            batch.delete_item(
-                Key={
-                    'id': each['id']
-                }
-            )
-
-    # Insertar los nuevos datos
-    i = 1
-    for row in rows:
-        row['#'] = i
-        row['id'] = str(uuid.uuid4())  # Generar un ID único para cada entrada
-        table.put_item(Item=row)
-        i = i + 1
-
-    # Retornar el resultado como JSON
-    return {
-        'statusCode': 200,
-        'body': rows
-    }
+# Cierra el navegador
+driver.quit()
