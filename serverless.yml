@@ -4,7 +4,6 @@ service: api-web-scraping-2
 provider:
   name: aws
   runtime: python3.12
-  # Default memory size for functions (default: 1024MB)
   memorySize: 1024
   timeout: 30
   iam:
@@ -12,10 +11,11 @@ provider:
 
 functions:
   scrape_table:
-    handler: scrap_table.lambda_handler  # Asegúrarse de que el nombre del archivo y la función coincidan
-    package:
-      include:
-        - ./**  # Incluir todo el contenido del directorio
+    handler: scrap_table.lambda_handler  # Asegúrate de que el nombre del archivo y la función coincidan
+    layers:
+      - arn:aws:lambda:us-east-1:468251834706:layer:chrome-aws-lambda:10  # ARN de la capa con Chromium y Chromedriver
+    memorySize: 1024
+    timeout: 20
     events:
       - http:
           path: /scrape/table
