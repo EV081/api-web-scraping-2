@@ -1,38 +1,63 @@
-org: evssz
-service: api-web-scraping-2
+org: flanche
+service: api-web-scraping
 
 provider:
   name: aws
-  runtime: python3.12
-  # Default memory size for functions (default: 1024MB)
-  memorySize: 1024
-  timeout: 30
+  runtime: nodejs20.x
+  region: us-east-1
+  memorySize: 2048
+  timeout: 90
   iam:
-    role: arn:aws:iam::468251834706:role/LabRole
+    role: arn:aws:iam::606646193182:role/LabRole
 
 functions:
   scrape_table:
-    handler: scrap_table.lambda_handler  # Asegúrarse de que el nombre del archivo y la función coincidan
-    package:
-      include:
-        - ./**  # Incluir todo el contenido del directorio
+    handler: scrape_table.lambda_handler
+    layers:
+      - arn:aws:lambda:us-east-1:764866452798:layer:chrome-aws-lambda:43
     events:
       - http:
           path: /scrape/table
           method: get
           cors: true
           integration: lambda
+      - http:
+          path: /scrape/table
+          method: post
+          cors: true
+          integration: lambda
 
 resources:
   Resources:
-    TablaWebScrapping_2:
+    TablaWebScrapping:
       Type: AWS::DynamoDB::Table
       Properties:
-        TableName: TablaWebScrapping_2
+        TableName: TablaWebScrapping2
         AttributeDefinitions:
           - AttributeName: id
+            AttributeType: S
+          - AttributeName: scraped_at
             AttributeType: S
         KeySchema:
           - AttributeName: id
             KeyType: HASH
         BillingMode: PAY_PER_REQUEST
+        GlobalSecondaryIndexes:
+          - IndexName: ScrapedAtIndex
+            KeySchema:
+              - AttributeName: scraped_at
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+
+plugins:
+  - serverless-offline
+
+package:
+  individually: true
+  exclude:
+    - .git/**
+    - .gitignore
+    - README.md
+  include:
+    - scrape_table.js
