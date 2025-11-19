@@ -1,5 +1,5 @@
-org: flanche
-service: api-web-scraping
+org: webscraping2
+service: api-web-scraping-2
 
 provider:
   name: aws
@@ -8,7 +8,7 @@ provider:
   memorySize: 2048
   timeout: 90
   iam:
-    role: arn:aws:iam::606646193182:role/LabRole
+    role: arn:aws:iam::468251834706:role/LabRole
 
 functions:
   scrape_table:
